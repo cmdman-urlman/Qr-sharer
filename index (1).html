@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>QR-siirto — tiedostot QR-videolla</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+<style>
+  :root{
+    --bg: #0a0e0d;
+    --panel: #101614;
+    --line: #1f2b27;
+    --signal: #4dffb0;
+    --amber: #ffb454;
+    --text: #d7e8e0;
+    --text-dim: #6f8a80;
+    --danger: #ff6b6b;
+    --mono: 'Courier New', ui-monospace, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height:100vh;
+    padding: 18px;
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(77,255,176,0.06), transparent 40%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+  }
+  .wrap{max-width:520px;margin:0 auto;}
+
+  .brand{display:flex; align-items:baseline; gap:10px; margin-bottom:4px;}
+  .brand .dot{
+    width:9px;height:9px;border-radius:50%;background:var(--signal);
+    box-shadow:0 0 8px var(--signal);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.35} }
+  .brand h1{font-size:15px;letter-spacing:.12em;text-transform:uppercase;margin:0;font-weight:600;color:var(--signal);}
+  .sub{color:var(--text-dim);font-size:11.5px;margin:0 0 20px 19px;letter-spacing:.03em;}
+
+  .modeswitch{
+    display:flex; gap:2px; margin-bottom:18px;
+    border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel);
+  }
+  .modeswitch button{
+    flex:1; padding:11px 6px; background:transparent; border:none;
+    color:var(--text-dim); font-family:var(--mono); font-size:12.5px;
+    letter-spacing:.08em; text-transform:uppercase; cursor:pointer; transition: all .15s ease;
+  }
+  .modeswitch button.active{ background: rgba(77,255,176,0.10); color: var(--signal); }
+
+  .panel{
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px; margin-bottom: 14px;
+  }
+  .panel h2{
+    font-size:11px; text-transform:uppercase; letter-spacing:.12em;
+    color:var(--text-dim); margin:0 0 14px 0; font-weight:600;
+  }
+  .row{margin-bottom:14px;}
+  .row:last-child{margin-bottom:0;}
+  label.f{display:block;font-size:11.5px;color:var(--text-dim);margin-bottom:6px;letter-spacing:.03em;}
+
+  input[type=file]{
+    width:100%; padding:10px; background:#0d1310; border:1px dashed var(--line);
+    border-radius:6px; color:var(--text); font-family:var(--mono); font-size:12px;
+  }
+  input[type=range]{ width:100%; accent-color: var(--signal); height:4px; }
+  .rangeval{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-dim); }
+  .rangeval b{color:var(--signal); font-size:14px;}
+
+  button.action{
+    width:100%; padding:13px; background:var(--signal); color:#04140d;
+    border:none; border-radius:7px; font-family:var(--mono); font-weight:700;
+    font-size:13px; letter-spacing:.05em; text-transform:uppercase; cursor:pointer;
+    transition: transform .08s ease, opacity .15s ease;
+  }
+  button.action:active{transform:scale(.98);}
+  button.action:disabled{opacity:.35; cursor:not-allowed;}
+  button.ghost{
+    width:100%; padding:12px; background:transparent; color:var(--text);
+    border:1px solid var(--line); border-radius:7px; font-family:var(--mono);
+    font-size:12px; letter-spacing:.05em; text-transform:uppercase; cursor:pointer; margin-top:8px;
+  }
+  button.ghost.danger{ color:var(--danger); border-color:rgba(255,107,107,0.35); }
+  button.ghost:disabled{opacity:.35; cursor:not-allowed;}
+
+  .fileinfo{ font-size:12px; color:var(--text-dim); margin-top:8px; line-height:1.6; }
+  .fileinfo span{color:var(--signal);}
+  .hint{font-size:11px; color:var(--text-dim); text-align:center; margin-top:8px; line-height:1.5;}
+
+  .progressbar{ width:100%; height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
+  .progressbar > div{ height:100%; background:var(--signal); width:0%; transition:width .1s linear; }
+  .statusline{ width:100%; font-size:11.5px; color:var(--text-dim); display:flex; justify-content:space-between; margin-top:8px; }
+  .statusline b{color:var(--signal);}
+
+  video{ width:100%; border-radius:10px; background:#000; display:block; }
+  .scanwrap{position:relative;}
+  .rec-dot{
+    position:absolute; top:10px; left:10px; display:flex; align-items:center; gap:6px;
+    background:rgba(0,0,0,0.55); padding:5px 9px; border-radius:20px; font-size:11px;
+    color:var(--danger); letter-spacing:.05em;
+  }
+  .rec-dot .r{ width:8px;height:8px;border-radius:50%; background:var(--danger); animation:pulse .9s ease-in-out infinite; }
+
+  .chunkgrid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(6px,1fr)); gap:2px; margin-top:10px; }
+  .chunkgrid .c{ aspect-ratio:1; background:var(--line); border-radius:1px; }
+  .chunkgrid .c.got{background:var(--signal);}
+
+  a.dl{
+    display:block; text-align:center; text-decoration:none; width:100%; padding:13px;
+    background:var(--signal); color:#04140d; border-radius:7px; font-weight:700;
+    font-size:13px; letter-spacing:.05em; text-transform:uppercase; margin-top:12px;
+  }
+  .offscreen{ position:fixed; left:-9999px; top:-9999px; }
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand"><div class="dot"></div><h1>QR-siirto</h1></div>
+  <div class="sub">tiedostonsiirto QR-videolla, ei verkkoa</div>
+
+  <div class="modeswitch">
+    <button id="btnModeSend" class="active">Lähetä</button>
+    <button id="btnModeRecv">Vastaanota</button>
+  </div>
+
+  <!-- ============ LÄHETYS ============ -->
+  <div id="viewSend">
+
+    <div class="panel" id="sendSetup">
+      <h2>1. Valitse tiedosto ja nopeus</h2>
+      <div class="row">
+        <input type="file" id="fileInput">
+        <div class="fileinfo" id="fileInfo">Ei tiedostoa valittuna.</div>
+      </div>
+      <div class="row">
+        <label class="f">Nopeus (QR-koodia / sekunti)</label>
+        <input type="range" id="rateInput" min="1" max="60" value="8">
+        <div class="rangeval"><span>1</span><b id="rateVal">8</b><span>60</span></div>
+      </div>
+      <div class="row">
+        <button class="action" id="btnGenerate" disabled>Luo QR-video</button>
+      </div>
+      <div class="hint">Suositus 5–15 kpl/s — luotettava skannaus kameralla. Suuremmilla nopeuksilla vastaanottajan kannattaa nauhoittaa videon useampi kierros.</div>
+    </div>
+
+    <div class="panel hidden" id="sendRendering">
+      <h2 id="renderStageTitle">Muodostetaan QR-kuvia</h2>
+      <div class="progressbar"><div id="renderProgress"></div></div>
+      <div class="statusline"><span>Kehys <b id="renderIdx">0</b>/<b id="renderTotal">0</b></span><span id="renderPct">0%</span></div>
+      <div class="hint" id="renderHint">Lasketaan QR-koodit valmiiksi kuviksi ennen nauhoitusta, jotta nauhoitus pysyy tasatahtisena.</div>
+    </div>
+
+    <div class="panel hidden" id="sendReady">
+      <h2>Video valmis — näytä tämä vastaanottajan kameralle</h2>
+      <video id="previewVideo" controls loop autoplay muted playsinline></video>
+      <div class="fileinfo" id="videoInfo">—</div>
+      <a href="#" id="downloadVideoLink" class="dl" download>Lataa video (.webm)</a>
+      <button class="ghost" id="btnFullscreen">Koko näyttö</button>
+      <button class="ghost danger" id="btnNewVideo">Tee uusi video</button>
+    </div>
+
+  </div>
+
+  <!-- ============ VASTAANOTTO ============ -->
+  <div id="viewRecv" class="hidden">
+
+    <div class="panel" id="recvCamPanel">
+      <h2>Nauhoita lähettäjän näyttö</h2>
+      <div class="scanwrap">
+        <video id="camPreview" playsinline muted autoplay></video>
+        <div class="rec-dot hidden" id="recDot"><div class="r"></div><span id="recTimer">00:00</span></div>
+      </div>
+      <div class="hint" id="camHint">Käynnistetään kameraa…</div>
+      <button class="action" id="btnRecStart" disabled>Aloita nauhoitus</button>
+      <button class="ghost danger hidden" id="btnRecStop">Lopeta nauhoitus</button>
+    </div>
+
+    <div class="panel hidden" id="recvProcessing">
+      <h2>Käsitellään tallennettua videota</h2>
+      <div class="progressbar"><div id="procProgress"></div></div>
+      <div class="statusline"><span id="procHint">0%</span><span id="procFound">0 koodia löytyi</span></div>
+    </div>
+
+    <div class="panel hidden" id="recvProgressPanel">
+      <h2>Kerätyt palat</h2>
+      <div class="fileinfo" id="recvFileInfo">—</div>
+      <div class="progressbar" style="margin-top:10px;"><div id="recvProgress"></div></div>
+      <div class="statusline"><span>Palat <b id="recvGot">0</b>/<b id="recvTotal">0</b></span><span id="recvPct">0%</span></div>
+      <div class="chunkgrid" id="chunkGrid"></div>
+      <button class="ghost" id="btnRecordMore">Nauhoita lisää puuttuvia paloja</button>
+      <button class="ghost danger" id="btnRecvReset">Aloita alusta</button>
+    </div>
+
+    <div class="panel hidden" id="recvDonePanel">
+      <h2>Valmis</h2>
+      <div class="fileinfo" id="recvDoneInfo">—</div>
+      <a href="#" id="recvDownload" class="dl" download>Lataa tiedosto</a>
+      <button class="ghost" id="btnRecvReset2">Vastaanota toinen tiedosto</button>
+    </div>
+
+  </div>
+
+  <!-- piilotetut työkalut -->
+  <div class="offscreen">
+    <div id="qrHidden"></div>
+    <canvas id="renderCanvas" width="500" height="500"></canvas>
+    <canvas id="procCanvas"></canvas>
+  </div>
+
+</div>
+
+<script>
+/* ---------------------------------------------------------------
+   YHTEISET APUFUNKTIOT
+--------------------------------------------------------------- */
+const crcTable = (() => {
+  let t = [];
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = crcTable[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return ((c ^ 0xFFFFFFFF) >>> 0).toString(16);
+}
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  return btoa(binary);
+}
+function base64ToBytes(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+function strToB64(s){ return btoa(unescape(encodeURIComponent(s))); }
+function b64ToStr(s){ return decodeURIComponent(escape(atob(s))); }
+function randomId(){ return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
+function fmtTime(sec){
+  const m = Math.floor(sec/60).toString().padStart(2,'0');
+  const s = Math.floor(sec%60).toString().padStart(2,'0');
+  return m+':'+s;
+}
+
+// Palasen raakadatan koko ennen base64:ää. Pidetään maltillisena, koska
+// video pakataan (VP8/VP9) sekä kuvataan vielä kameralla uudelleen —
+// isot/tiheät QR-koodit eivät kestä kahta pakkauskierrosta yhtä hyvin.
+const CHUNK_BYTES = 900;
+
+/* ---------------------------------------------------------------
+   TILAN VAIHTO
+--------------------------------------------------------------- */
+const btnModeSend = document.getElementById('btnModeSend');
+const btnModeRecv = document.getElementById('btnModeRecv');
+const viewSend = document.getElementById('viewSend');
+const viewRecv = document.getElementById('viewRecv');
+
+btnModeSend.onclick = () => {
+  btnModeSend.classList.add('active'); btnModeRecv.classList.remove('active');
+  viewSend.classList.remove('hidden'); viewRecv.classList.add('hidden');
+  stopCamera();
+};
+btnModeRecv.onclick = () => {
+  btnModeRecv.classList.add('active'); btnModeSend.classList.remove('active');
+  viewRecv.classList.remove('hidden'); viewSend.classList.add('hidden');
+  startCamera();
+};
+
+/* ---------------------------------------------------------------
+   LÄHETYS — kehysten muodostus + esirenderöity video
+--------------------------------------------------------------- */
+const fileInput = document.getElementById('fileInput');
+const fileInfo = document.getElementById('fileInfo');
+const rateInput = document.getElementById('rateInput');
+const rateVal = document.getElementById('rateVal');
+const btnGenerate = document.getElementById('btnGenerate');
+
+const sendSetup = document.getElementById('sendSetup');
+const sendRendering = document.getElementById('sendRendering');
+const sendReady = document.getElementById('sendReady');
+const renderProgress = document.getElementById('renderProgress');
+const renderIdx = document.getElementById('renderIdx');
+const renderTotal = document.getElementById('renderTotal');
+const renderPct = document.getElementById('renderPct');
+
+const previewVideo = document.getElementById('previewVideo');
+const videoInfo = document.getElementById('videoInfo');
+const downloadVideoLink = document.getElementById('downloadVideoLink');
+const btnFullscreen = document.getElementById('btnFullscreen');
+const btnNewVideo = document.getElementById('btnNewVideo');
+
+const qrHidden = document.getElementById('qrHidden');
+const renderCanvas = document.getElementById('renderCanvas');
+const renderCtx = renderCanvas.getContext('2d');
+
+let selectedFile = null;
+let frameTexts = [];
+let qrObj = null;
+let currentVideoUrl = null;
+
+rateInput.oninput = () => { rateVal.textContent = rateInput.value; };
+
+fileInput.onchange = () => {
+  const f = fileInput.files[0];
+  if (!f) { selectedFile = null; btnGenerate.disabled = true; return; }
+  selectedFile = f;
+  fileInfo.innerHTML = `<span>${f.name}</span> — ${(f.size/1024).toFixed(1)} kt — ${f.type || 'tuntematon tyyppi'}`;
+  btnGenerate.disabled = false;
+};
+
+function buildFrames(buf, filename, mime) {
+  const transferId = randomId();
+  const total = Math.ceil(buf.length / CHUNK_BYTES) || 1;
+  const filenameB64 = strToB64(filename);
+  const frames = [];
+  for (let i = 0; i < total; i++) {
+    const start = i * CHUNK_BYTES;
+    const slice = buf.subarray(start, Math.min(start + CHUNK_BYTES, buf.length));
+    const dataB64 = bytesToBase64(slice);
+    const crc = crc32(slice);
+    frames.push(['QRT1', transferId, i, total, filenameB64, mime, buf.length, crc, dataB64].join('|'));
+  }
+  return frames;
+}
+
+// Piirtää yhden QR-koodin qrHidden-elementtiin ja palauttaa siitä bitmapin.
+// Tämä tehdään KAIKILLE kehyksille ETUKÄTEEN, ennen nauhoituksen alkua —
+// raskas Reed-Solomon-laskenta (makeCode) ei siis koskaan tapahdu
+// nauhoituksen aikana eikä voi hidastaa tai jaksottaa sitä epätasaisesti.
+async function renderQrToBitmap(text) {
+  const size = 460;
+  if (!qrObj) {
+    qrHidden.innerHTML = '';
+    qrObj = new QRCode(qrHidden, { text, width: size, height: size, correctLevel: QRCode.CorrectLevel.M });
+  } else {
+    qrObj.clear();
+    qrObj.makeCode(text);
+  }
+  const src = qrHidden.querySelector('canvas') || qrHidden.querySelector('img');
+  const tmp = document.createElement('canvas');
+  tmp.width = renderCanvas.width;
+  tmp.height = renderCanvas.height;
+  const tctx = tmp.getContext('2d');
+  tctx.fillStyle = '#ffffff';
+  tctx.fillRect(0, 0, tmp.width, tmp.height);
+  const margin = (tmp.width - size) / 2;
+  tctx.drawImage(src, margin, margin, size, size);
+  return await createImageBitmap(tmp);
+}
+
+function pickMimeType() {
+  const candidates = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  for (const c of candidates) if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
+  return '';
+}
+
+btnGenerate.onclick = async () => {
+  if (!selectedFile) return;
+  const buf = new Uint8Array(await selectedFile.arrayBuffer());
+  const mime = selectedFile.type || 'application/octet-stream';
+  frameTexts = buildFrames(buf, selectedFile.name, mime);
+
+  sendSetup.classList.add('hidden');
+  sendRendering.classList.remove('hidden');
+  renderTotal.textContent = frameTexts.length;
+
+  const rate = parseInt(rateInput.value, 10);
+  const intervalMs = 1000 / rate;
+
+  /* ---- VAIHE 1: esirenderöi kaikki QR-kuvat bitmapeiksi (ei aikakriittinen) ---- */
+  document.getElementById('renderStageTitle').textContent = 'Vaihe 1/2 — Muodostetaan QR-kuvia';
+  document.getElementById('renderHint').textContent = 'Lasketaan jokainen QR-koodi valmiiksi kuvaksi etukäteen, jotta itse nauhoitus pysyy täysin tasatahtisena.';
+  const bitmaps = [];
+  for (let i = 0; i < frameTexts.length; i++) {
+    bitmaps.push(await renderQrToBitmap(frameTexts[i]));
+    const pct = Math.round((i + 1) / frameTexts.length * 100);
+    renderIdx.textContent = i + 1;
+    renderProgress.style.width = pct + '%';
+    renderPct.textContent = pct + '%';
+    // pieni tauko silloin tällöin, jotta käyttöliittymä (edistymispalkki) ehtii päivittyä
+    if (i % 15 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  /* ---- VAIHE 2: nauhoita valmiit kuvat tasatahtisesti ---- */
+  document.getElementById('renderStageTitle').textContent = 'Vaihe 2/2 — Nauhoitetaan videota';
+  document.getElementById('renderHint').textContent = 'Odota, video tallennetaan taustalla tasaisella nopeudella. Älä sulje selainta.';
+  renderIdx.textContent = 0;
+  renderProgress.style.width = '0%';
+  renderPct.textContent = '0%';
+
+  // ei fps-argumenttia -> striimi lähettää uuden kehyksen aina kun canvas
+  // piirretään uudelleen, synkronoituna näytön virkistystahtiin
+  const stream = renderCanvas.captureStream();
+  const mimeType = pickMimeType();
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6000000 } : undefined);
+  const recordedChunks = [];
+  recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+  recorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: mimeType || 'video/webm' });
+    if (currentVideoUrl) URL.revokeObjectURL(currentVideoUrl);
+    currentVideoUrl = URL.createObjectURL(blob);
+    previewVideo.src = currentVideoUrl;
+    downloadVideoLink.href = currentVideoUrl;
+    downloadVideoLink.download = (selectedFile.name || 'siirto') + '.qr.webm';
+    videoInfo.innerHTML = `<span>${frameTexts.length}</span> kehystä, ${rate}/s — video ${(blob.size/1024/1024).toFixed(2)} Mt`;
+    sendRendering.classList.add('hidden');
+    sendReady.classList.remove('hidden');
+  };
+  recorder.start();
+
+  // Absoluuttiseen kelloon sidottu, driftiä korjaava toistosilmukka.
+  // Kunkin hetken oikea kehysindeksi lasketaan aina suoraan kuluneesta
+  // ajasta (performance.now() - startTime) / intervalMs, EI edellisestä
+  // kehyksestä — pienet viiveet yksittäisissä silmukan kierroksissa eivät
+  // siis koskaan kumuloidu, vaan seuraava kehys "napsahtaa" aina oikeaan
+  // absoluuttiseen ajankohtaan.
+  const totalDuration = frameTexts.length * intervalMs;
+  let startTime = null;
+  let lastDrawnIdx = -1;
+
+  function tick(now) {
+    if (startTime === null) startTime = now;
+    const elapsed = now - startTime;
+    const idx = Math.min(Math.floor(elapsed / intervalMs), bitmaps.length - 1);
+
+    if (idx !== lastDrawnIdx) {
+      renderCtx.drawImage(bitmaps[idx], 0, 0);
+      lastDrawnIdx = idx;
+      renderIdx.textContent = idx + 1;
+      const pct = Math.round((idx + 1) / bitmaps.length * 100);
+      renderProgress.style.width = pct + '%';
+      renderPct.textContent = pct + '%';
+    }
+
+    if (elapsed < totalDuration) {
+      requestAnimationFrame(tick);
+    } else {
+      // varmistetaan että viimeinen kehys ehtii mukaan striimiin ennen pysäytystä
+      setTimeout(() => recorder.stop(), 150);
+    }
+  }
+  requestAnimationFrame(tick);
+};
+
+btnFullscreen.onclick = () => {
+  if (previewVideo.requestFullscreen) previewVideo.requestFullscreen();
+};
+
+btnNewVideo.onclick = () => {
+  sendReady.classList.add('hidden');
+  sendSetup.classList.remove('hidden');
+  qrObj = null;
+};
+
+/* ---------------------------------------------------------------
+   VASTAANOTTO — kuvaa kamera, sitten käsittele nauhoite
+--------------------------------------------------------------- */
+const camPreview = document.getElementById('camPreview');
+const camHint = document.getElementById('camHint');
+const recDot = document.getElementById('recDot');
+const recTimer = document.getElementById('recTimer');
+const btnRecStart = document.getElementById('btnRecStart');
+const btnRecStop = document.getElementById('btnRecStop');
+
+const recvCamPanel = document.getElementById('recvCamPanel');
+const recvProcessing = document.getElementById('recvProcessing');
+const recvProgressPanel = document.getElementById('recvProgressPanel');
+const recvDonePanel = document.getElementById('recvDonePanel');
+
+const procProgress = document.getElementById('procProgress');
+const procHint = document.getElementById('procHint');
+const procFound = document.getElementById('procFound');
+
+const recvFileInfo = document.getElementById('recvFileInfo');
+const recvProgress = document.getElementById('recvProgress');
+const recvGot = document.getElementById('recvGot');
+const recvTotal = document.getElementById('recvTotal');
+const recvPct = document.getElementById('recvPct');
+const chunkGrid = document.getElementById('chunkGrid');
+const btnRecordMore = document.getElementById('btnRecordMore');
+const btnRecvReset = document.getElementById('btnRecvReset');
+
+const recvDoneInfo = document.getElementById('recvDoneInfo');
+const recvDownload = document.getElementById('recvDownload');
+const btnRecvReset2 = document.getElementById('btnRecvReset2');
+
+const procCanvas = document.getElementById('procCanvas');
+const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+
+let camStream = null;
+let camRecorder = null;
+let camRecordedChunks = [];
+let recTimerInterval = null;
+let recStartedAt = 0;
+
+let receiving = { id: null, total: 0, filename: '', mime: '', size: 0, parts: new Map() };
+
+async function startCamera() {
+  if (camStream) return;
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+    camPreview.srcObject = camStream;
+    await camPreview.play();
+    camHint.textContent = 'Osoita kamera lähettäjän näyttöön ja paina "Aloita nauhoitus"';
+    btnRecStart.disabled = false;
+  } catch (e) {
+    camHint.textContent = 'Kameran käyttö epäonnistui: ' + e.message;
+  }
+}
+function stopCamera() {
+  if (recTimerInterval) { clearInterval(recTimerInterval); recTimerInterval = null; }
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+}
+
+btnRecStart.onclick = () => {
+  if (!camStream) return;
+  camRecordedChunks = [];
+  const mimeType = pickMimeType();
+  camRecorder = new MediaRecorder(camStream, mimeType ? { mimeType } : undefined);
+  camRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) camRecordedChunks.push(e.data); };
+  camRecorder.onstop = () => {
+    const blob = new Blob(camRecordedChunks, { type: mimeType || 'video/webm' });
+    recvCamPanel.classList.add('hidden');
+    recvProcessing.classList.remove('hidden');
+    processRecordedVideo(blob);
+  };
+  camRecorder.start();
+  recStartedAt = Date.now();
+  recDot.classList.remove('hidden');
+  btnRecStart.classList.add('hidden');
+  btnRecStop.classList.remove('hidden');
+  recTimerInterval = setInterval(() => {
+    recTimer.textContent = fmtTime((Date.now() - recStartedAt) / 1000);
+  }, 250);
+};
+
+btnRecStop.onclick = () => {
+  if (camRecorder && camRecorder.state !== 'inactive') camRecorder.stop();
+  if (recTimerInterval) { clearInterval(recTimerInterval); recTimerInterval = null; }
+  recDot.classList.add('hidden');
+  btnRecStop.classList.add('hidden');
+  btnRecStart.classList.remove('hidden');
+};
+
+function processRecordedVideo(blob) {
+  const v = document.createElement('video');
+  v.src = URL.createObjectURL(blob);
+  v.muted = true;
+  v.playsInline = true;
+
+  const STEP = 0.05; // 20 näytettä / s
+  let foundCount = 0;
+
+  function captureFrame() {
+    procCanvas.width = v.videoWidth;
+    procCanvas.height = v.videoHeight;
+    procCtx.drawImage(v, 0, 0, procCanvas.width, procCanvas.height);
+    const imgData = procCtx.getImageData(0, 0, procCanvas.width, procCanvas.height);
+    const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'dontInvert' });
+    if (code && code.data) {
+      const ok = handleFrame(code.data);
+      if (ok) foundCount++;
+    }
+  }
+
+  v.addEventListener('loadeddata', () => {
+    const duration = v.duration || 0;
+    const totalSteps = Math.max(1, Math.ceil(duration / STEP));
+    let step = 0;
+
+    captureFrame();
+    step = 1;
+    procProgress.style.width = Math.round(step/totalSteps*100) + '%';
+    procHint.textContent = Math.round(step/totalSteps*100) + '%';
+    procFound.textContent = foundCount + ' koodia löytyi';
+
+    if (totalSteps <= 1) { finishProcessing(); return; }
+    v.currentTime = Math.min(step * STEP, duration);
+
+    v.addEventListener('seeked', function onSeeked() {
+      captureFrame();
+      step++;
+      const pct = Math.round(step/totalSteps*100);
+      procProgress.style.width = pct + '%';
+      procHint.textContent = pct + '%';
+      procFound.textContent = foundCount + ' koodia löytyi';
+      if (step >= totalSteps) {
+        v.removeEventListener('seeked', onSeeked);
+        finishProcessing();
+      } else {
+        v.currentTime = Math.min(step * STEP, duration);
+      }
+    });
+  });
+}
+
+function finishProcessing() {
+  recvProcessing.classList.add('hidden');
+  if (receiving.id && receiving.parts.size === receiving.total) {
+    finishReceiving();
+  } else {
+    recvCamPanel.classList.remove('hidden');
+    recvProgressPanel.classList.remove('hidden');
+    camHint.textContent = receiving.id
+      ? 'Osa paloista puuttuu vielä — nauhoita uudelleen (esim. anna videon toistaa alusta).'
+      : 'QR-koodeja ei löytynyt. Kokeile uudelleen — pidä puhelin tukevasti ja täytä kuva-ala QR-koodilla.';
+  }
+}
+
+// palauttaa true jos kehys oli kelvollinen ja tallennettiin (tai oli jo tallennettu)
+function handleFrame(text) {
+  const parts = text.split('|');
+  if (parts.length < 9 || parts[0] !== 'QRT1') return false;
+
+  const [, id, indexStr, totalStr, filenameB64, mime, sizeStr, crc, dataB64] = parts;
+  const index = parseInt(indexStr, 10);
+  const total = parseInt(totalStr, 10);
+
+  if (receiving.id !== id) {
+    receiving = { id, total, filename: b64ToStr(filenameB64), mime, size: parseInt(sizeStr, 10), parts: new Map() };
+    buildChunkGrid(total);
+    recvFileInfo.innerHTML = `<span>${receiving.filename}</span> — ${(receiving.size/1024).toFixed(1)} kt`;
+    recvTotal.textContent = total;
+  }
+
+  if (!receiving.parts.has(index)) {
+    let bytes;
+    try { bytes = base64ToBytes(dataB64); } catch (e) { return false; }
+    if (crc32(bytes) !== crc) return false;
+    receiving.parts.set(index, bytes);
+    markChunkGot(index);
+    updateRecvProgress();
+  }
+  return true;
+}
+
+function buildChunkGrid(total) {
+  chunkGrid.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 'c';
+    d.id = 'chunk-' + i;
+    frag.appendChild(d);
+  }
+  chunkGrid.appendChild(frag);
+}
+function markChunkGot(i) { const el = document.getElementById('chunk-' + i); if (el) el.classList.add('got'); }
+function updateRecvProgress() {
+  const got = receiving.parts.size, total = receiving.total;
+  recvGot.textContent = got; recvTotal.textContent = total;
+  const pct = Math.round(got / total * 100);
+  recvPct.textContent = pct + '%';
+  recvProgress.style.width = pct + '%';
+}
+
+function finishReceiving() {
+  const buf = new Uint8Array(receiving.size);
+  let offset = 0;
+  for (let i = 0; i < receiving.total; i++) {
+    const part = receiving.parts.get(i);
+    buf.set(part, offset);
+    offset += part.length;
+  }
+  const blob = new Blob([buf], { type: receiving.mime || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  recvDownload.href = url;
+  recvDownload.download = receiving.filename || 'tiedosto';
+  recvDoneInfo.innerHTML = `<span>${receiving.filename}</span> — ${(receiving.size/1024).toFixed(1)} kt vastaanotettu kokonaan`;
+
+  recvCamPanel.classList.add('hidden');
+  recvProgressPanel.classList.add('hidden');
+  recvDonePanel.classList.remove('hidden');
+}
+
+btnRecordMore.onclick = () => {
+  recvCamPanel.classList.remove('hidden');
+};
+
+function resetReceiving() {
+  receiving = { id: null, total: 0, filename: '', mime: '', size: 0, parts: new Map() };
+  recvDonePanel.classList.add('hidden');
+  recvProgressPanel.classList.add('hidden');
+  recvCamPanel.classList.remove('hidden');
+  camHint.textContent = 'Osoita kamera lähettäjän näyttöön ja paina "Aloita nauhoitus"';
+}
+btnRecvReset.onclick = resetReceiving;
+btnRecvReset2.onclick = resetReceiving;
+</script>
+</body>
+</html>
